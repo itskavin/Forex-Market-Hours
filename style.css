@@ -225,6 +225,7 @@ h1 {
     align-items: center;
     gap: 0.5rem;
     width: 100%;
+    overflow: hidden;
 }
 
 .timezone-select {
@@ -242,20 +243,24 @@ h1 {
     background-position: right 0.25rem center;
     background-repeat: no-repeat;
     background-size: 1.2em 1.2em;
-    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+    max-width: 120px;
 }
 
 .timezone-offset {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
     font-weight: 500;
     white-space: nowrap;
-    min-width: 60px;
+    flex-shrink: 0;
 }
 
 .select-wrapper {
     position: relative;
-    flex-grow: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 120px;
 }
 
 .timezone-display {
@@ -268,12 +273,13 @@ h1 {
     display: flex;
     align-items: center;
     margin: 0 1rem; /* Add margin to prevent edge clipping */
+    overflow: hidden;
 }
 
 .axis-label {
     position: absolute;
     transform: translateX(-50%);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 600;
     color: var(--text-muted);
     display: flex;
@@ -281,6 +287,7 @@ h1 {
     align-items: center;
     gap: 0;
     top: 24px; /* Push numbers down */
+    white-space: nowrap;
 }
 
 .axis-icon {
