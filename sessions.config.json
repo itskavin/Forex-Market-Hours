@@ -1,0 +1,6 @@
+[
+  { "id": "sydney", "name": "Sydney", "timeZone": "Australia/Sydney", "startLocal": "08:00", "endLocal": "17:00", "color": "var(--col-sydney)" },
+  { "id": "tokyo", "name": "Tokyo", "timeZone": "Asia/Tokyo", "startLocal": "09:00", "endLocal": "18:00", "color": "var(--col-tokyo)" },
+  { "id": "london", "name": "London", "timeZone": "Europe/London", "startLocal": "08:00", "endLocal": "17:00", "color": "var(--col-london)" },
+  { "id": "newyork", "name": "New York", "timeZone": "America/New_York", "startLocal": "08:00", "endLocal": "17:00", "color": "var(--col-ny)" }
+]
