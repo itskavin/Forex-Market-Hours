@@ -356,26 +356,29 @@ function update() {
     const displayTime = scrubbedTime || realNow;
     
     // 1. Update Header Info
-    // Update Timezone Offset Label
+    // Update Timezone Offset Label and Dropdown Text
     const offsetLabel = document.getElementById('timezone-offset');
-    if (offsetLabel) {
-        let offsetStr = '';
+    const tzSelect = document.getElementById('timezone-select');
+    
+    if (offsetLabel && tzSelect) {
+        const info = getOffsetInfo(selectedTimeZone);
+        const suffix = info.isDstNow ? ' (DST)' : '';
+        
         if (selectedTimeZone === 'local') {
-            const offset = -realNow.getTimezoneOffset();
-            const sign = offset >= 0 ? '+' : '-';
-            const hours = Math.floor(Math.abs(offset) / 60);
-            const mins = Math.abs(offset) % 60;
-            offsetStr = `GMT${sign}${hours}:${mins.toString().padStart(2, '0')}`;
+            // Show offset label only for local time
+            offsetLabel.textContent = `${info.label}${suffix}`;
+            offsetLabel.style.display = '';
         } else {
-            // Get offset for specific timezone
-            const parts = new Intl.DateTimeFormat('en-US', {
-                timeZone: selectedTimeZone,
-                timeZoneName: 'longOffset'
-            }).formatToParts(realNow);
-            const tzPart = parts.find(p => p.type === 'timeZoneName');
-            offsetStr = tzPart ? tzPart.value.replace('GMT', 'GMT') : '';
+            // Hide offset label for other timezones
+            offsetLabel.style.display = 'none';
+            
+            // Update dropdown option text with GMT offset
+            const selectedOption = tzSelect.options[tzSelect.selectedIndex];
+            const baseName = selectedOption.textContent.split(' (')[0]; // Get city name
+            if (selectedTimeZone !== 'UTC') {
+                selectedOption.textContent = `${baseName} (${info.label}${suffix})`;
+            }
         }
-        offsetLabel.textContent = offsetStr;
     }
 
     // Update Main Clock - ALWAYS use realNow
@@ -544,6 +547,40 @@ const volumeProfile = [
     65, 70, 65, 60, 65, 85, 95, 100, // 8-15 (London/NY)
     90, 70, 50, 40, 30, 25, 20, 15  // 16-23 (Close)
 ];
+
+function getOffsetMinutes(date, tz) {
+    if (tz === 'local') {
+        // For local timezone, use the built-in method (returns negative of GMT offset)
+        return -date.getTimezoneOffset();
+    }
+    const local = new Date(date.toLocaleString('en-US', { timeZone: tz }));
+    const utc = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+    return (local - utc) / 60000; // minutes offset from UTC
+}
+
+function formatOffset(minutes) {
+    const sign = minutes >= 0 ? '+' : '-';
+    const abs = Math.abs(minutes);
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    return `GMT${sign}${h}:${m.toString().padStart(2, '0')}`;
+}
+
+function getOffsetInfo(tz) {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const offsetNow = getOffsetMinutes(now, tz);
+    const offsetJan = getOffsetMinutes(new Date(Date.UTC(year, 0, 1)), tz);
+    const offsetJul = getOffsetMinutes(new Date(Date.UTC(year, 6, 1)), tz);
+    const observesDst = offsetJan !== offsetJul;
+    const standardOffset = Math.min(offsetJan, offsetJul); // more negative usually standard time
+    const isDstNow = observesDst && offsetNow > standardOffset;
+    return {
+        label: formatOffset(offsetNow),
+        observesDst,
+        isDstNow,
+    };
+}
 
 function getVolumeValue(date) {
     const utcHours = date.getUTCHours();

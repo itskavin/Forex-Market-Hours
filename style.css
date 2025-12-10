@@ -246,6 +246,9 @@ h1 {
     min-width: 0;
     flex: 1 1 auto;
     max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .timezone-offset {
@@ -272,8 +275,9 @@ h1 {
     position: relative;
     display: flex;
     align-items: center;
-    margin: 0 1rem; /* Add margin to prevent edge clipping */
-    overflow: hidden;
+    margin: 0 0.75rem;
+    padding: 0 0.5rem;
+    overflow: visible;
 }
 
 .axis-label {
@@ -378,6 +382,10 @@ h1 {
     font-weight: 700;
     text-transform: uppercase;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    pointer-events: none;
 }
 
 /* Market Status Dashboard */
@@ -585,36 +593,15 @@ h1 {
 .cursor-overlay.scrubbing .cursor-time-tooltip {
     opacity: 1;
 }
-    left: 50%;
-    transform: translateX(-50%);
-    width: 14px;
-    height: 28px;
-    background: white;
-    border: 2px solid #8b5cf6;
-    border-radius: 14px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 2px;
-}
-
-.cursor-knob::after, .cursor-knob::before {
-    content: '';
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: #e5e7eb;
-}
-
-.cursor-knob::after { background: #8b5cf6; } /* Active dot */
 
 /* Hide old elements */
 .sessions-grid, .timeline-container {
     display: none;
 }
-    bottom: 0;
+
+.current-time-marker {
+    position: absolute;
+    top: 0;
     width: 2px;
     background-color: #ef4444;
     z-index: 10;
