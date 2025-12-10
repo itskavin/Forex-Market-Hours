@@ -5,6 +5,107 @@ const sessions = [
     { id: "newyork", name: "New York", timeZone: "America/New_York", startLocal: "08:00", endLocal: "17:00", color: "#10b981", flag: "fi fi-us" }
 ];
 
+/**
+ * Get precise DST information for a timezone
+ * Uses Intl API for accurate timezone offset detection
+ */
+function getTimezoneDSTInfo(timeZone, date = new Date()) {
+    // Get the current offset in minutes
+    const getCurrentOffset = (tz, d) => {
+        const utcDate = new Date(d.toLocaleString('en-US', { timeZone: 'UTC' }));
+        const tzDate = new Date(d.toLocaleString('en-US', { timeZone: tz }));
+        return (tzDate - utcDate) / 60000; // offset in minutes
+    };
+    
+    const currentOffset = getCurrentOffset(timeZone, date);
+    
+    // Check January and July to determine DST behavior
+    const year = date.getFullYear();
+    const janDate = new Date(year, 0, 15); // Jan 15
+    const julDate = new Date(year, 6, 15); // Jul 15
+    
+    const janOffset = getCurrentOffset(timeZone, janDate);
+    const julOffset = getCurrentOffset(timeZone, julDate);
+    
+    // Determine if timezone observes DST
+    const observesDST = janOffset !== julOffset;
+    
+    // For Southern Hemisphere (Sydney), DST is in Jan (summer)
+    // For Northern Hemisphere (London, NY), DST is in Jul (summer)
+    let isDST = false;
+    let standardOffset, dstOffset;
+    
+    if (observesDST) {
+        // The larger offset (more positive) is DST
+        if (janOffset > julOffset) {
+            // Southern hemisphere - DST in January
+            standardOffset = julOffset;
+            dstOffset = janOffset;
+        } else {
+            // Northern hemisphere - DST in July
+            standardOffset = janOffset;
+            dstOffset = julOffset;
+        }
+        isDST = currentOffset === dstOffset;
+    } else {
+        standardOffset = currentOffset;
+        dstOffset = currentOffset;
+    }
+    
+    return {
+        currentOffset,
+        standardOffset,
+        dstOffset,
+        observesDST,
+        isDST,
+        offsetString: formatOffsetString(currentOffset),
+        standardOffsetString: formatOffsetString(standardOffset),
+        dstOffsetString: formatOffsetString(dstOffset)
+    };
+}
+
+function formatOffsetString(minutes) {
+    const sign = minutes >= 0 ? '+' : '-';
+    const absMinutes = Math.abs(minutes);
+    const hours = Math.floor(absMinutes / 60);
+    const mins = absMinutes % 60;
+    return `UTC${sign}${hours}${mins > 0 ? ':' + mins.toString().padStart(2, '0') : ''}`;
+}
+
+/**
+ * Convert local session time to UTC for a given timezone and date
+ */
+function getSessionUTCTimes(session, date = new Date()) {
+    const dstInfo = getTimezoneDSTInfo(session.timeZone, date);
+    const offsetMinutes = dstInfo.currentOffset;
+    
+    // Parse local times
+    const [startH, startM] = session.startLocal.split(':').map(Number);
+    const [endH, endM] = session.endLocal.split(':').map(Number);
+    
+    // Convert to UTC (subtract offset)
+    let startUTC = (startH * 60 + startM) - offsetMinutes;
+    let endUTC = (endH * 60 + endM) - offsetMinutes;
+    
+    // Normalize to 0-1440 range
+    while (startUTC < 0) startUTC += 1440;
+    while (startUTC >= 1440) startUTC -= 1440;
+    while (endUTC < 0) endUTC += 1440;
+    while (endUTC >= 1440) endUTC -= 1440;
+    
+    const formatTime = (mins) => {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
+    
+    return {
+        startUTC: formatTime(startUTC),
+        endUTC: formatTime(endUTC),
+        dstInfo
+    };
+}
+
 let is24Hour = false;
 let currentTheme = 'system'; // 'light', 'dark', 'system'
 let scrubbedTime = null;
@@ -199,12 +300,29 @@ function stopScrubOnce() {
 // Rendering
 function renderStructure() {
     const container = document.getElementById('schedule-rows');
-    container.innerHTML = sessions.map(session => `
+    container.innerHTML = sessions.map(session => {
+        const utcInfo = getSessionUTCTimes(session);
+        
+        const tooltipContent = `
+            <div class="tooltip-content">
+                <div class="tooltip-header">${utcInfo.dstInfo.isDST ? 'Daylight Saving Time' : 'Standard Time'}</div>
+                <div class="tooltip-desc">${utcInfo.dstInfo.isDST ? 'Clocks advanced 1 hour' : 'Normal time observation'}</div>
+                <div class="tooltip-time">Session (UTC): ${utcInfo.startUTC} - ${utcInfo.endUTC}</div>
+            </div>
+        `;
+
+        const dstBadge = utcInfo.dstInfo.isDST 
+            ? `<span class="dst-badge dst-active">DST${tooltipContent}</span>`
+            : (utcInfo.dstInfo.observesDST 
+                ? `<span class="dst-badge dst-inactive">STD${tooltipContent}</span>` 
+                : '');
+        
+        return `
         <div class="session-row" id="row-${session.id}">
             <div class="session-info">
                 <div class="flag-icon"><span class="${session.flag}"></span></div>
                 <div class="session-details">
-                    <h3>${session.name}</h3>
+                    <h3>${session.name} ${dstBadge}</h3>
                     <span class="session-time" id="time-${session.id}">--:--</span>
                     <span class="session-meta" id="meta-${session.id}">--</span>
                 </div>
@@ -213,7 +331,7 @@ function renderStructure() {
                 <!-- Bars injected here -->
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 function renderTimelineAxis() {
@@ -229,9 +347,10 @@ function renderTimelineAxis() {
         let text = i;
         let icon = '';
         
-        if (!is24Hour) {
-            if (i === 0 || i === 24) text = '12';
-            else if (i === 12) text = '12';
+        if (i === 0 || i === 24) {
+            text = '';
+        } else if (!is24Hour) {
+            if (i === 12) text = '12';
             else text = i > 12 ? i - 12 : i;
         }
         
@@ -239,7 +358,6 @@ function renderTimelineAxis() {
         if (i === 6) icon = '<span class="axis-icon">☀️</span>'; // Sunrise approx
         if (i === 12) icon = '<span class="axis-icon">☀️</span>'; // Noon
         if (i === 18) icon = '<span class="axis-icon">🌙</span>'; // Sunset approx
-        if (i === 0 || i === 24) icon = '<span class="axis-icon">🌙</span>'; // Midnight
         
         // Icon first, then text (so icon is above text in column layout)
         label.innerHTML = `${icon}<span class="axis-time">${text}</span>`;
@@ -393,6 +511,60 @@ function update() {
 
     // 2. Update Rows (Use displayTime/scrubbedTime)
     sessions.forEach(session => {
+        // Update DST info for each session
+        const utcInfo = getSessionUTCTimes(session, displayTime);
+        
+        // Update DST badge
+        const row = document.getElementById(`row-${session.id}`);
+        if (row) {
+            const h3 = row.querySelector('h3');
+            if (h3) {
+                const existingBadge = h3.querySelector('.dst-badge');
+                const isDST = utcInfo.dstInfo.isDST;
+                const observesDST = utcInfo.dstInfo.observesDST;
+                
+                let desiredType = null;
+                if (isDST) desiredType = 'active';
+                else if (observesDST) desiredType = 'inactive';
+                
+                let needsUpdate = true;
+                if (existingBadge) {
+                    const isActive = existingBadge.classList.contains('dst-active');
+                    const isInactive = existingBadge.classList.contains('dst-inactive');
+                    
+                    if (desiredType === 'active' && isActive) needsUpdate = false;
+                    else if (desiredType === 'inactive' && isInactive) needsUpdate = false;
+                    else if (desiredType === null) needsUpdate = true;
+                } else {
+                    if (desiredType === null) needsUpdate = false;
+                }
+                
+                if (needsUpdate) {
+                    if (existingBadge) existingBadge.remove();
+                    
+                    if (desiredType === 'active') {
+                        const badge = document.createElement('span');
+                        badge.className = 'dst-badge dst-active';
+                        badge.innerHTML = `DST<div class="tooltip-content">
+                            <div class="tooltip-header">Daylight Saving Time</div>
+                            <div class="tooltip-desc">Clocks advanced 1 hour</div>
+                            <div class="tooltip-time">Session (UTC): ${utcInfo.startUTC} - ${utcInfo.endUTC}</div>
+                        </div>`;
+                        h3.appendChild(badge);
+                    } else if (desiredType === 'inactive') {
+                        const badge = document.createElement('span');
+                        badge.className = 'dst-badge dst-inactive';
+                        badge.innerHTML = `STD<div class="tooltip-content">
+                            <div class="tooltip-header">Standard Time</div>
+                            <div class="tooltip-desc">Normal time observation</div>
+                            <div class="tooltip-time">Session (UTC): ${utcInfo.startUTC} - ${utcInfo.endUTC}</div>
+                        </div>`;
+                        h3.appendChild(badge);
+                    }
+                }
+            }
+        }
+        
         const sessionTimeStr = displayTime.toLocaleTimeString('en-US', { 
             timeZone: session.timeZone, 
             hour12: !is24Hour, 
@@ -548,37 +720,32 @@ const volumeProfile = [
     90, 70, 50, 40, 30, 25, 20, 15  // 16-23 (Close)
 ];
 
-function getOffsetMinutes(date, tz) {
+function getOffsetInfo(tz) {
     if (tz === 'local') {
-        // For local timezone, use the built-in method (returns negative of GMT offset)
-        return -date.getTimezoneOffset();
+        // For local timezone
+        const now = new Date();
+        const offsetMinutes = -now.getTimezoneOffset();
+        const sign = offsetMinutes >= 0 ? '+' : '-';
+        const abs = Math.abs(offsetMinutes);
+        const h = Math.floor(abs / 60);
+        const m = abs % 60;
+        return {
+            label: `GMT${sign}${h}:${m.toString().padStart(2, '0')}`,
+            observesDst: false, // Can't easily detect for local
+            isDstNow: false
+        };
     }
-    const local = new Date(date.toLocaleString('en-US', { timeZone: tz }));
-    const utc = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
-    return (local - utc) / 60000; // minutes offset from UTC
-}
-
-function formatOffset(minutes) {
-    const sign = minutes >= 0 ? '+' : '-';
-    const abs = Math.abs(minutes);
+    
+    const dstInfo = getTimezoneDSTInfo(tz);
+    const sign = dstInfo.currentOffset >= 0 ? '+' : '-';
+    const abs = Math.abs(dstInfo.currentOffset);
     const h = Math.floor(abs / 60);
     const m = abs % 60;
-    return `GMT${sign}${h}:${m.toString().padStart(2, '0')}`;
-}
-
-function getOffsetInfo(tz) {
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const offsetNow = getOffsetMinutes(now, tz);
-    const offsetJan = getOffsetMinutes(new Date(Date.UTC(year, 0, 1)), tz);
-    const offsetJul = getOffsetMinutes(new Date(Date.UTC(year, 6, 1)), tz);
-    const observesDst = offsetJan !== offsetJul;
-    const standardOffset = Math.min(offsetJan, offsetJul); // more negative usually standard time
-    const isDstNow = observesDst && offsetNow > standardOffset;
+    
     return {
-        label: formatOffset(offsetNow),
-        observesDst,
-        isDstNow,
+        label: `GMT${sign}${h}:${m.toString().padStart(2, '0')}`,
+        observesDst: dstInfo.observesDST,
+        isDstNow: dstInfo.isDST
     };
 }
 
