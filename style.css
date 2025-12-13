@@ -37,7 +37,7 @@ body {
     min-height: 100vh;
     display: flex;
     justify-content: center;
-    padding: 2rem;
+    padding: clamp(1rem, 3vw, 2rem);
 }
 
 .app-container {
@@ -55,6 +55,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
+    flex-wrap: wrap;
     gap: 2rem;
 }
 
@@ -104,6 +105,7 @@ body {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .btn-icon, .btn-text {
@@ -224,6 +226,7 @@ h1 {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex-wrap: wrap;
     width: 100%;
     overflow: hidden;
 }
@@ -758,4 +761,155 @@ h1 {
 .current-time-marker.scrubbing::after {
     content: attr(data-time);
     background: var(--accent-color);
+}
+
+/* Responsive Layout */
+@media (max-width: 1024px) {
+    .header-top {
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .header-right {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+
+    .schedule-container {
+        --sidebar-width: 240px;
+        --row-height: 72px;
+    }
+
+    .session-info {
+        padding: 0 1rem;
+    }
+
+    .market-status-card {
+        gap: 1rem;
+    }
+}
+
+@media (max-width: 720px) {
+    h1 {
+        font-size: 1.5rem;
+    }
+
+    .header-right {
+        width: 100%;
+        row-gap: 0.5rem;
+    }
+
+    .time-group, .volume-card {
+        align-items: flex-start;
+    }
+
+    .schedule-container {
+        --sidebar-width: 200px;
+        --row-height: 68px;
+    }
+
+    .header-spacer {
+        padding: 0 1rem;
+    }
+
+    .timeline-header {
+        height: auto;
+        min-height: 68px;
+        align-items: center;
+        padding: 0.35rem 0;
+    }
+
+    .timeline-axis-container {
+        padding: 0.25rem 0.5rem 0.35rem;
+        min-height: 50px;
+    }
+
+    .axis-label {
+        font-size: 0.65rem;
+        top: 18px;
+    }
+
+    .session-info {
+        gap: 0.75rem;
+        padding: 0 0.75rem;
+    }
+
+    .session-details h3 {
+        font-size: 0.95rem;
+    }
+
+    .session-time {
+        font-size: 0.82rem;
+    }
+
+    .session-meta {
+        font-size: 0.75rem;
+    }
+
+    .flag-icon {
+        font-size: 1.6rem;
+        width: 32px;
+    }
+
+    .volume-row {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .volume-info {
+        width: 100%;
+        border-right: 0;
+        border-bottom: 1px solid var(--border-color);
+        padding: 0.75rem 1rem;
+    }
+
+    .volume-track {
+        width: 100%;
+        min-height: 140px;
+    }
+
+    .cursor-time-tooltip {
+        top: -52px;
+    }
+}
+
+@media (max-width: 540px) {
+    body {
+        padding: 0.75rem;
+    }
+
+    .schedule-container {
+        --sidebar-width: 170px;
+        --row-height: 64px;
+    }
+
+    .header-top {
+        gap: 0.75rem;
+    }
+
+    .timeline-controls {
+        gap: 0.35rem;
+    }
+
+    .timezone-select, .btn-text {
+        font-size: 0.7rem;
+        padding: 0.3rem 0.6rem;
+    }
+
+    .clock {
+        font-size: 1.5rem;
+    }
+
+    .market-status-card {
+        grid-template-columns: 1fr;
+        margin-bottom: 2rem;
+    }
+
+    .status-value {
+        font-size: 1rem;
+    }
+
+    .cursor-line {
+        width: 1.5px;
+    }
 }

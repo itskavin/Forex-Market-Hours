@@ -6,6 +6,29 @@ const sessions = [
 ];
 
 /**
+ * Check if forex market is closed for the weekend
+ * Forex markets close Friday 5pm EST and reopen Sunday 5pm EST
+ */
+function isWeekendClosed(date = new Date()) {
+    // Get day of week in New York (forex market hours reference)
+    const nyTimeStr = date.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
+    const nyDate = new Date(nyTimeStr);
+    const dayOfWeek = nyDate.getDay(); // 0 = Sunday, 6 = Saturday
+    const hours = nyDate.getHours();
+    
+    // Friday after 5 PM EST
+    if (dayOfWeek === 5 && hours >= 17) return true;
+    
+    // All day Saturday
+    if (dayOfWeek === 6) return true;
+    
+    // Sunday before 5 PM EST
+    if (dayOfWeek === 0 && hours < 17) return true;
+    
+    return false;
+}
+
+/**
  * Get precise DST information for a timezone
  * Uses Intl API for accurate timezone offset detection
  */
@@ -219,9 +242,18 @@ document.getElementById('format-toggle').addEventListener('click', () => {
 const scheduleContainer = document.querySelector('.schedule-container');
 const cursorOverlay = document.getElementById('cursor-overlay');
 
+function getSidebarWidth() {
+    const fallback = 280;
+    const container = scheduleContainer || document.querySelector('.schedule-container');
+    if (!container) return fallback;
+    const raw = getComputedStyle(container).getPropertyValue('--sidebar-width');
+    const parsed = parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function handleScrub(e) {
     const rect = scheduleContainer.getBoundingClientRect();
-    const sidebarWidth = 280; // Must match CSS var
+    const sidebarWidth = getSidebarWidth();
     const trackWidth = rect.width - sidebarWidth;
     
     let clientX = e.clientX;
@@ -367,20 +399,29 @@ function renderTimelineAxis() {
 
 function updateDashboard(now) {
     // 1. Market Status (Open/Closed)
-    // Check if ANY major session is open
-    let openSessions = [];
-    sessions.forEach(s => {
-        if (checkSessionOpen(now, s)) openSessions.push(s.name);
-    });
-    
     const statusEl = document.getElementById('market-state');
-    if (statusEl) {
-        if (openSessions.length > 0) {
-            statusEl.textContent = `Open (${openSessions.join(', ')})`;
-            statusEl.style.color = 'var(--success-color)';
-        } else {
-            statusEl.textContent = 'Closed';
-            statusEl.style.color = 'var(--text-muted)';
+    
+    // Check if it's weekend (market closed)
+    if (isWeekendClosed(now)) {
+        if (statusEl) {
+            statusEl.textContent = 'Closed - Weekend';
+            statusEl.style.color = '#ef4444'; // Red for weekend closure
+        }
+    } else {
+        // Check if ANY major session is open during weekdays
+        let openSessions = [];
+        sessions.forEach(s => {
+            if (checkSessionOpen(now, s)) openSessions.push(s.name);
+        });
+        
+        if (statusEl) {
+            if (openSessions.length > 0) {
+                statusEl.textContent = `Open (${openSessions.join(', ')})`;
+                statusEl.style.color = 'var(--success-color)';
+            } else {
+                statusEl.textContent = 'Closed';
+                statusEl.style.color = 'var(--text-muted)';
+            }
         }
     }
 
@@ -392,27 +433,30 @@ function updateDashboard(now) {
     
     let activeKillzones = [];
     
-    // Helper to check time range in specific zone
-    const checkTime = (zone, startH, endH) => {
-        const timeStr = now.toLocaleTimeString('en-US', { timeZone: zone, hour12: false, hour: '2-digit', minute: '2-digit' });
-        const [h, m] = timeStr.split(':').map(Number);
-        const mins = h * 60 + m;
-        const start = startH * 60;
-        const end = endH * 60;
-        return mins >= start && mins < end;
-    };
+    // Only check killzones if not weekend
+    if (!isWeekendClosed(now)) {
+        // Helper to check time range in specific zone
+        const checkTime = (zone, startH, endH) => {
+            const timeStr = now.toLocaleTimeString('en-US', { timeZone: zone, hour12: false, hour: '2-digit', minute: '2-digit' });
+            const [h, m] = timeStr.split(':').map(Number);
+            const mins = h * 60 + m;
+            const start = startH * 60;
+            const end = endH * 60;
+            return mins >= start && mins < end;
+        };
 
-    if (checkTime('Europe/London', 7, 10)) activeKillzones.push("London Open");
-    if (checkTime('America/New_York', 7, 10)) activeKillzones.push("NY Open");
-    if (checkTime('Europe/London', 15, 17)) activeKillzones.push("London Close");
-    
-    // Check Overlaps
-    const isLondonOpen = checkSessionOpen(now, sessions.find(s => s.id === 'london'));
-    const isNYOpen = checkSessionOpen(now, sessions.find(s => s.id === 'newyork'));
-    const isTokyoOpen = checkSessionOpen(now, sessions.find(s => s.id === 'tokyo'));
-    
-    if (isLondonOpen && isNYOpen) activeKillzones.push("London/NY Overlap");
-    if (isLondonOpen && isTokyoOpen) activeKillzones.push("London/Tokyo Overlap");
+        if (checkTime('Europe/London', 7, 10)) activeKillzones.push("London Open");
+        if (checkTime('America/New_York', 7, 10)) activeKillzones.push("NY Open");
+        if (checkTime('Europe/London', 15, 17)) activeKillzones.push("London Close");
+        
+        // Check Overlaps
+        const isLondonOpen = checkSessionOpen(now, sessions.find(s => s.id === 'london'));
+        const isNYOpen = checkSessionOpen(now, sessions.find(s => s.id === 'newyork'));
+        const isTokyoOpen = checkSessionOpen(now, sessions.find(s => s.id === 'tokyo'));
+        
+        if (isLondonOpen && isNYOpen) activeKillzones.push("London/NY Overlap");
+        if (isLondonOpen && isTokyoOpen) activeKillzones.push("London/Tokyo Overlap");
+    }
 
     const kzEl = document.getElementById('active-killzone');
     if (kzEl) {
@@ -430,36 +474,61 @@ function updateDashboard(now) {
     let minDiff = Infinity;
     let nextEventText = '--';
     
-    sessions.forEach(s => {
-        // Get current time in session zone
-        const timeStr = now.toLocaleTimeString('en-US', { timeZone: s.timeZone, hour12: false, hour: '2-digit', minute: '2-digit' });
-        const [h, m] = timeStr.split(':').map(Number);
-        const currMins = h * 60 + m;
+    // Check if weekend - show when market reopens
+    if (isWeekendClosed(now)) {
+        // Calculate time until Sunday 5 PM EST
+        const nyTimeStr = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
+        const nyDate = new Date(nyTimeStr);
+        const dayOfWeek = nyDate.getDay();
+        const currHour = nyDate.getHours();
+        const currMin = nyDate.getMinutes();
         
-        const [startH, startM] = s.startLocal.split(':').map(Number);
-        const startMins = startH * 60 + startM;
-        
-        const [endH, endM] = s.endLocal.split(':').map(Number);
-        const endMins = endH * 60 + endM;
-        
-        // Calc time to Open
-        let diffOpen = startMins - currMins;
-        if (diffOpen < 0) diffOpen += 24 * 60;
-        
-        if (diffOpen < minDiff) {
-            minDiff = diffOpen;
-            nextEventText = `${s.name} Opens`;
+        let hoursUntilOpen = 0;
+        if (dayOfWeek === 5) {
+            // Friday after 5 PM - wait until Sunday 5 PM
+            hoursUntilOpen = (24 - currHour + 17) + 24; // Rest of Friday + all Saturday + until 5 PM Sunday
+        } else if (dayOfWeek === 6) {
+            // Saturday - wait until Sunday 5 PM
+            hoursUntilOpen = (24 - currHour + 17);
+        } else if (dayOfWeek === 0 && currHour < 17) {
+            // Sunday before 5 PM
+            hoursUntilOpen = 17 - currHour;
         }
         
-        // Calc time to Close
-        let diffClose = endMins - currMins;
-        if (diffClose < 0) diffClose += 24 * 60;
-        
-        if (diffClose < minDiff) {
-            minDiff = diffClose;
-            nextEventText = `${s.name} Closes`;
-        }
-    });
+        minDiff = hoursUntilOpen * 60 - currMin;
+        nextEventText = 'Market Opens';
+    } else {
+        sessions.forEach(s => {
+            // Get current time in session zone
+            const timeStr = now.toLocaleTimeString('en-US', { timeZone: s.timeZone, hour12: false, hour: '2-digit', minute: '2-digit' });
+            const [h, m] = timeStr.split(':').map(Number);
+            const currMins = h * 60 + m;
+            
+            const [startH, startM] = s.startLocal.split(':').map(Number);
+            const startMins = startH * 60 + startM;
+            
+            const [endH, endM] = s.endLocal.split(':').map(Number);
+            const endMins = endH * 60 + endM;
+            
+            // Calc time to Open
+            let diffOpen = startMins - currMins;
+            if (diffOpen < 0) diffOpen += 24 * 60;
+            
+            if (diffOpen < minDiff) {
+                minDiff = diffOpen;
+                nextEventText = `${s.name} Opens`;
+            }
+            
+            // Calc time to Close
+            let diffClose = endMins - currMins;
+            if (diffClose < 0) diffClose += 24 * 60;
+            
+            if (diffClose < minDiff) {
+                minDiff = diffClose;
+                nextEventText = `${s.name} Closes`;
+            }
+        });
+    }
     
     const hrs = Math.floor(minDiff / 60);
     const mins = minDiff % 60;
@@ -595,6 +664,11 @@ function update() {
 }
 
 function checkSessionOpen(now, session) {
+    // Forex market is closed on weekends
+    if (isWeekendClosed(now)) {
+        return false;
+    }
+    
     const timeInZone24 = now.toLocaleTimeString('en-US', { 
         timeZone: session.timeZone, hour12: false, hour: '2-digit', minute: '2-digit' 
     });
@@ -621,9 +695,12 @@ function updateTimelineBars(now) {
     }
     const dateSelected = new Date(strSelected);
     
+    // Check if it's weekend for visual indication
+    const isWeekend = isWeekendClosed(now);
+    
     sessions.forEach(session => {
         const track = document.getElementById(`track-${session.id}`);
-        track.innerHTML = ''; 
+        track.innerHTML = '';
 
         const strSession = now.toLocaleString('en-US', { timeZone: session.timeZone });
         const dateSession = new Date(strSession);
@@ -661,13 +738,25 @@ function updateTimelineBars(now) {
             bar.className = 'timeline-bar';
             bar.style.left = `${left}%`;
             bar.style.width = `${width}%`;
-            bar.style.backgroundColor = session.color;
+            
+            // Dim the bars during weekend
+            if (isWeekend) {
+                bar.style.backgroundColor = 'var(--closed-color)';
+                bar.style.opacity = '0.3';
+            } else {
+                bar.style.backgroundColor = session.color;
+            }
             
             const isOpen = checkSessionOpen(now, session);
             const label = document.createElement('div');
             label.className = 'bar-label';
-            label.style.color = session.color;
-            label.textContent = `${session.name.toUpperCase()} SESSION ${isOpen ? 'OPEN' : 'CLOSED'}`;
+            label.style.color = isWeekend ? 'var(--closed-color)' : session.color;
+            
+            if (isWeekend) {
+                label.textContent = `${session.name.toUpperCase()} - WEEKEND CLOSED`;
+            } else {
+                label.textContent = `${session.name.toUpperCase()} SESSION ${isOpen ? 'OPEN' : 'CLOSED'}`;
+            }
             
             if (width > 5) bar.appendChild(label);
             
@@ -722,17 +811,29 @@ const volumeProfile = [
 
 function getOffsetInfo(tz) {
     if (tz === 'local') {
-        // For local timezone
+        // For local timezone - use proper DST detection
         const now = new Date();
         const offsetMinutes = -now.getTimezoneOffset();
+        
+        // Check if local timezone observes DST
+        const jan = new Date(now.getFullYear(), 0, 1);
+        const jul = new Date(now.getFullYear(), 6, 1);
+        const janOffset = -jan.getTimezoneOffset();
+        const julOffset = -jul.getTimezoneOffset();
+        const observesDst = janOffset !== julOffset;
+        
+        // Current offset differs from standard (non-DST) offset
+        const standardOffset = Math.min(janOffset, julOffset);
+        const isDstNow = observesDst && (offsetMinutes !== standardOffset);
+        
         const sign = offsetMinutes >= 0 ? '+' : '-';
         const abs = Math.abs(offsetMinutes);
         const h = Math.floor(abs / 60);
         const m = abs % 60;
         return {
             label: `GMT${sign}${h}:${m.toString().padStart(2, '0')}`,
-            observesDst: false, // Can't easily detect for local
-            isDstNow: false
+            observesDst: observesDst,
+            isDstNow: isDstNow
         };
     }
     
